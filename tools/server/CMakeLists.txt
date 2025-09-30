@@ -40,3 +40,14 @@ if (WIN32)
 endif()
 
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
+
+set(BACKEND_TARGET backend-llama-server)
+add_library(${BACKEND_TARGET} ${TARGET_SRCS})
+target_include_directories(${BACKEND_TARGET} PRIVATE ../mtmd)
+target_include_directories(${BACKEND_TARGET} PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(${BACKEND_TARGET} PRIVATE common mtmd ${CMAKE_THREAD_LIBS_INIT})
+
+if (WIN32)
+    TARGET_LINK_LIBRARIES(${BACKEND_TARGET} PRIVATE ws2_32)
+endif()
+target_compile_features(${BACKEND_TARGET} PRIVATE cxx_std_17)

@@ -5373,3 +5373,9 @@ int main(int argc, char ** argv) {
 
     return 0;
 }
+
+extern "C" {
+    __declspec(dllexport) int start_llama_server(int argc, char ** argv) {
+        return main(argc, argv);
+    }
+}
