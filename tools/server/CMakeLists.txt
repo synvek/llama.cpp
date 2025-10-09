@@ -41,8 +41,8 @@ endif()
 
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
-set(BACKEND_TARGET backend-llama-server)
-add_library(${BACKEND_TARGET} ${TARGET_SRCS})
+set(BACKEND_TARGET synvek_backend_llama)
+add_library(${BACKEND_TARGET} SHARED ${TARGET_SRCS})
 target_include_directories(${BACKEND_TARGET} PRIVATE ../mtmd)
 target_include_directories(${BACKEND_TARGET} PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(${BACKEND_TARGET} PRIVATE common mtmd ${CMAKE_THREAD_LIBS_INIT})
