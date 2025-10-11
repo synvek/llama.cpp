@@ -5381,7 +5381,7 @@ int main(int argc, char ** argv) {
 #if defined(_WIN32)
 #define EXPORT_FUNC __declspec(dllexport)
 #else
-#define EXPORT_FUNC __attribute__(visiblility("default"))
+#define EXPORT_FUNC __attribute__((visiblility("default")))
 #endif
 
 extern "C" {
