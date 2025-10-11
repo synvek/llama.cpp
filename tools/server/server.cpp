@@ -4075,7 +4075,7 @@ inline void signal_handler(int signal) {
     shutdown_handler(signal);
 }
 
-int main(int argc, char ** argv) {
+int main_internal(int argc, char ** argv) {
     // own arguments required by this example
     common_params params;
 
@@ -5374,8 +5374,18 @@ int main(int argc, char ** argv) {
     return 0;
 }
 
+int main(int argc, char ** argv) {
+    return main_internal(argc, argv);
+}
+
+#if defined(_WIN32)
+#define EXPORT_FUNC __declspec(dllexport)
+#else
+#define EXPORT_FUNC __attribute__(visiblility("default"))
+#endif
+
 extern "C" {
-    __declspec(dllexport) int start_llama_server(int argc, char ** argv) {
-        return main(argc, argv);
+    EXPORT_FUNC int start_llama_server(int argc, char ** argv) {
+        return main_internal(argc, argv);
     }
 }
