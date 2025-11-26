@@ -4075,7 +4075,7 @@ inline void signal_handler(int signal) {
     shutdown_handler(signal);
 }
 
-int main_internal(int argc, char ** argv) {
+int main_internal(int argc, char ** argv, bool enable_common_init) {
     // own arguments required by this example
     common_params params;
 
@@ -4083,7 +4083,9 @@ int main_internal(int argc, char ** argv) {
         return 1;
     }
 
-    common_init();
+    if(enable_common_init) {
+        common_init();
+    }
 
     // struct that contains llama context and inference
     server_context ctx_server;
@@ -5375,7 +5377,7 @@ int main_internal(int argc, char ** argv) {
 }
 
 int main(int argc, char ** argv) {
-    return main_internal(argc, argv);
+    return main_internal(argc, argv, true);
 }
 
 #if defined(_WIN32)
@@ -5384,8 +5386,43 @@ int main(int argc, char ** argv) {
 #define EXPORT_FUNC __attribute__((visiblility("default")))
 #endif
 
+typedef void (*LogCallback)(int log_level, const char* log_message);
+
+static LogCallback log_call_back = nullptr;
+
+static void customize_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    //fprintf(stderr, "llama.cpp===============> log callback is called here: %s", text);
+    ggml_log_level log_level = level;
+    if (level == GGML_LOG_LEVEL_CONT) {
+        log_level = GGML_LOG_LEVEL_DEBUG;
+    }
+    //fprintf(stderr, "llama.cpp===============> log level = %d", log_level);
+    if (log_call_back) {
+        if(log_level >= GGML_LOG_LEVEL_DEBUG) {
+            log_call_back(log_level, text);
+        }
+    } else {
+        fprintf(stderr, "%s", text);
+    }
+}
+
 extern "C" {
     EXPORT_FUNC int start_llama_server(int argc, char ** argv) {
-        return main_internal(argc, argv);
+        llama_log_set(customize_log_callback, nullptr);
+        LOG_INF("build: %d (%s) with %s for %s\n", LLAMA_BUILD_NUMBER, LLAMA_COMMIT, LLAMA_COMPILER, LLAMA_BUILD_TARGET);
+
+        return main_internal(argc, argv, false);
+    }
+
+    EXPORT_FUNC void init_log_callback(LogCallback cb) {
+        log_call_back = cb;
+        std::cout << "C++: Rust callback has been set." << std::endl;
+    }
+
+    EXPORT_FUNC void cleanup_log_callback() {
+        if (log_call_back) {
+            log_call_back = nullptr;
+            std::cout << "C++: Rust callback has been cleared." << std::endl;
+        }
     }
 }
