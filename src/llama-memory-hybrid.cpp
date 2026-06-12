@@ -24,6 +24,7 @@ llama_memory_hybrid::llama_memory_hybrid(
                  uint32_t   rs_size,
                             /* common */
                  uint32_t   n_seq_max,
+                 uint32_t   n_rs_seq,
                      bool   offload,
                      bool   unified,
                             /* layer filters */
@@ -32,6 +33,7 @@ llama_memory_hybrid::llama_memory_hybrid(
     hparams(model.hparams),
     mem_attn(new llama_kv_cache(
         model,
+        model.hparams,
         type_k,
         type_v,
         v_trans,
@@ -42,9 +44,11 @@ llama_memory_hybrid::llama_memory_hybrid(
         n_pad,
         n_swa,
         swa_type,
+        nullptr,
         filter_attn == nullptr ?
-            [&](int32_t il) { return !hparams.is_recurrent(il); }
+            [&](int32_t il) { return !hparams.is_recr(il); }
             : filter_attn,
+        nullptr,
         nullptr
     )),
     mem_recr(new llama_memory_recurrent(
@@ -54,8 +58,9 @@ llama_memory_hybrid::llama_memory_hybrid(
         offload,
         rs_size,
         n_seq_max,
+        n_rs_seq,
         filter_recr == nullptr ?
-            [&](int32_t il) { return hparams.is_recurrent(il); }
+            [&](int32_t il) { return hparams.is_recr(il); }
             : filter_recr
     )) {}
 
@@ -73,7 +78,15 @@ llama_memory_context_ptr llama_memory_hybrid::init_batch(llama_batch_allocr & ba
                 // if all tokens are output, split by sequence
                 ubatch = balloc.split_seq(n_ubatch);
             } else {
-                ubatch = balloc.split_equal(n_ubatch, false);
+                if (mem_recr->n_rs_seq > 0) {
+                    // [TAG_RECURRENT_ROLLBACK_SPLITS]
+                    // TODO: recurrent state rollback does not support equal splits
+                    ubatch = balloc.split_seq(n_ubatch);
+                } else {
+                    // Use non-sequential split when KV cache is unified (needed for hellaswag/winogrande/multiple-choice)
+                    const bool unified = (mem_attn->get_n_stream() == 1);
+                    ubatch = balloc.split_equal(n_ubatch, !unified);
+                }
             }
 
             if (ubatch.n_tokens == 0) {
@@ -175,17 +188,17 @@ std::map<ggml_backend_buffer_type_t, size_t> llama_memory_hybrid::memory_breakdo
 }
 
 void llama_memory_hybrid::state_write(llama_io_write_i & io, llama_seq_id seq_id, llama_state_seq_flags flags) const {
-    GGML_UNUSED(flags);
-
-    mem_attn->state_write(io, seq_id);
-    mem_recr->state_write(io, seq_id);
+    if ((flags & LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == 0) {
+        mem_attn->state_write(io, seq_id, flags);
+    }
+    mem_recr->state_write(io, seq_id, flags);
 }
 
 void llama_memory_hybrid::state_read(llama_io_read_i & io, llama_seq_id seq_id, llama_state_seq_flags flags) {
-    GGML_UNUSED(flags);
-
-    mem_attn->state_read(io, seq_id);
-    mem_recr->state_read(io, seq_id);
+    if ((flags & LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == 0) {
+        mem_attn->state_read(io, seq_id, flags);
+    }
+    mem_recr->state_read(io, seq_id, flags);
 }
 
 llama_kv_cache * llama_memory_hybrid::get_mem_attn() const {
@@ -220,7 +233,7 @@ llama_memory_hybrid_context::llama_memory_hybrid_context(
     ubatches(std::move(ubatches)),
     // note: here we copy the ubatches. not sure if this is ideal
     ctx_attn(new llama_kv_cache_context(mem->get_mem_attn(), std::move(sinfos_attn), this->ubatches)),
-    ctx_recr(new llama_memory_recurrent_context(mem->get_mem_recr(),                        this->ubatches)),
+    ctx_recr(new llama_memory_recurrent_context(mem->get_mem_recr(), this->ubatches)),
     status(llama_memory_status_combine(ctx_attn->get_status(), ctx_recr->get_status())) {
 }
 
